@@ -63,6 +63,8 @@ app.MapPost("/login", (LoginRequest login) =>
     return Results.Ok(new { message = "Login recebido" });
 });
 
+app.Urls.Add("http://0.0.0.0:80");
+
 app.Run();
 
 record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
