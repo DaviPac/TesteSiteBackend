@@ -1,3 +1,6 @@
+using backend.Models;
+using backend.Utils;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
@@ -35,6 +38,15 @@ app.MapGet("/weatherforecast", () =>
 })
 .WithName("GetWeatherForecast")
 .WithOpenApi();
+
+app.MapPost("/login", (LoginRequest login) =>
+{
+    Console.WriteLine($"Usuário: {login.Username}");
+    Console.WriteLine($"Senha: {login.Password}");
+
+    if (!LoginFn.Validate(login)) return Results.Unauthorized();
+    return Results.Ok(new { message = "Login recebido" });
+});
 
 app.Run();
 
