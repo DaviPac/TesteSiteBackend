@@ -1,7 +1,13 @@
 using backend.Models;
 using backend.Utils;
+using backend.Data;
+using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Adiciona o DbContext ao serviço
+builder.Services.AddDbContext<AppDbContext>(options =>
+    options.UseSqlite("Data Source=app.db"));
 
 // Adiciona CORS
 builder.Services.AddCors(options =>
@@ -54,13 +60,19 @@ app.MapGet("/weatherforecast", () =>
 .WithName("GetWeatherForecast")
 .WithOpenApi();
 
-app.MapPost("/login", (LoginRequest login) =>
+app.MapPost("/login", (UserRequest user, AppDbContext dbContext) =>
 {
-    Console.WriteLine($"Usuário: {login.Username}");
-    Console.WriteLine($"Senha: {login.Password}");
-
-    if (!LoginFn.Validate(login)) return Results.Unauthorized();
+    if (!LoginFn.Validate(user, dbContext)) return Results.Unauthorized();
     return Results.Ok(new { message = "Login recebido" });
+});
+
+app.MapPost("/Register", (UserRequest user, AppDbContext dbContext) =>
+{
+    if (RegisterFn.Register(user, dbContext))
+    {
+        return Results.Ok(new { message = "Usuário registrado com sucesso" });
+    }
+    return Results.BadRequest(new { message = "Usuário já existe" });
 });
 
 app.Urls.Add("http://0.0.0.0:80");
