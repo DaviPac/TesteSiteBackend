@@ -2,8 +2,30 @@ using backend.Models;
 using backend.Utils;
 using backend.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
+using System.Text;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+
+var jwtKey = "chave-secreta-segura";
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(opt =>
+    {
+        opt.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = false,
+            ValidateAudience = false,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey))
+        };
+    });
+
+builder.Services.AddAuthorization();
 
 // Adiciona o DbContext ao serviço
 builder.Services.AddDbContext<AppDbContext>(options =>
@@ -29,6 +51,9 @@ builder.Services.AddSwaggerGen();
 var app = builder.Build();
 
 app.UseCors();
+
+app.UseAuthentication();
+app.UseAuthorization();
 
 
 // Configure the HTTP request pipeline.
@@ -60,10 +85,28 @@ app.MapGet("/weatherforecast", () =>
 .WithName("GetWeatherForecast")
 .WithOpenApi();
 
-app.MapPost("/login", (UserRequest user, AppDbContext dbContext) =>
+app.MapPost("/login", (UserRequest login, AppDbContext db) =>
 {
-    if (!LoginFn.Validate(user, dbContext)) return Results.Unauthorized();
-    return Results.Ok(new { message = "Login recebido" });
+    var user = db.Usuarios.FirstOrDefault(u => u.Username == login.Username && u.Password == login.Password);
+    if (user == null)
+        return Results.Unauthorized();
+
+    var claims = new[]
+    {
+        new Claim(ClaimTypes.Name, user.Username),
+        new Claim(ClaimTypes.Role, user.Role)
+    };
+
+    var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey));
+    var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+    var token = new JwtSecurityToken(
+        claims: claims,
+        expires: DateTime.UtcNow.AddHours(1),
+        signingCredentials: creds);
+
+    var tokenString = new JwtSecurityTokenHandler().WriteToken(token);
+
+    return Results.Ok(new { token = tokenString });
 });
 
 app.MapPost("/Register", (UserRequest user, AppDbContext dbContext) =>
@@ -74,6 +117,12 @@ app.MapPost("/Register", (UserRequest user, AppDbContext dbContext) =>
     }
     return Results.BadRequest(new { message = "Usuário já existe" });
 });
+
+app.MapGet("/perfil", (ClaimsPrincipal user) =>
+{
+    var username = user.Identity?.Name;
+    return Results.Ok(new { username });
+}).RequireAuthorization();
 
 app.Urls.Add("http://0.0.0.0:80");
 
