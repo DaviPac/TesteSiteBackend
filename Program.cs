@@ -29,7 +29,7 @@ builder.Services.AddAuthorization();
 
 // Adiciona o DbContext ao serviço
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlite("Data Source=app.db"));
+    options.UseSqlite("Data Source=data/db.sqlite"));
 
 // Adiciona CORS
 builder.Services.AddCors(options =>
