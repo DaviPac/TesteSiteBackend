@@ -7,6 +7,7 @@ COPY *.csproj ./
 RUN dotnet restore
 
 RUN mkdir -p /data
+COPY app.db /data/app.db
 
 # Copia o restante e publica
 COPY . ./

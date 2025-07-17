@@ -7,6 +7,7 @@ using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using System.Globalization;
 
 var jwtKey = "minha-chave-super-ultra-secreta-mesmo-veridico-2025-123456"; //adicionar como variavel de ambiente depois
 
@@ -37,7 +38,7 @@ builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
     {
-        policy.WithOrigins("https://davipac.github.io")
+        policy.WithOrigins("https://testesitebackend.fly.dev", "https://davipac.github.io")
               .AllowAnyHeader()
               .AllowAnyMethod()
               .AllowCredentials();
@@ -125,6 +126,14 @@ app.MapGet("/user", (AppDbContext dbContext, string username) =>
     return Results.Ok(user);
 }).RequireAuthorization("AdminOnly");
 
+app.MapGet("/userID", (AppDbContext dbContext, int id) =>
+{
+    var user = dbContext.Usuarios.FirstOrDefault(u => u.Id == id);
+    if (user == null)
+        return Results.NotFound();
+    return Results.Ok(user);
+}).RequireAuthorization("AdminOnly");
+
 app.MapPost("/promote", (AppDbContext dbContext, string username) =>
 {
     var user = dbContext.Usuarios.FirstOrDefault(u => u.Username == username);
@@ -197,6 +206,75 @@ app.MapPost("/set-points", (AppDbContext dbContext, string username, int points)
     dbContext.SaveChanges();
     return Results.Ok(new { message = "Pontuação alterada com sucesso" });
 }).RequireAuthorization("AdminOnly");
+
+app.MapPost("/criar-torneio", (AppDbContext dbContext, TorneioRequest torneioRequest) =>
+{
+    if (DateTime.TryParseExact(torneioRequest.Data, "dd/MM/yyyy HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime data))
+    {
+        var torneio = new Torneio
+        {
+            Nome = torneioRequest.Nome,
+            Data = data,
+            Type = torneioRequest.Type,
+        };
+        dbContext.Torneios.Add(torneio);
+        dbContext.SaveChanges();
+        return Results.Ok(new { message = "Torneio criado com sucesso" });
+    }
+    return Results.BadRequest(new { message = "Data inválida" });
+
+}).RequireAuthorization("AdminOnly");
+
+app.MapGet("/torneios", (AppDbContext dbContext) =>
+{
+    var torneios = dbContext.Torneios.ToList();
+    return Results.Ok(torneios);
+}).RequireAuthorization();
+
+app.MapGet("/torneio", (AppDbContext dbContext, int id) =>
+{
+    var torneio = dbContext.Torneios.FirstOrDefault(t => t.Id == id);
+    if (torneio == null)
+        return Results.NotFound();
+    return Results.Ok(torneio);
+}).RequireAuthorization();
+
+app.MapPost("/mudar-torneio", (AppDbContext dbContext, MudarTorneioRequest torneioRequest) =>
+{
+    var torneio = dbContext.Torneios.FirstOrDefault(t => t.Id == torneioRequest.TorneioId);
+    if (torneio == null)
+        return Results.NotFound();
+    torneio.Nome = torneioRequest.Nome;
+    torneio.Data = DateTime.Parse(torneioRequest.Data);
+    dbContext.SaveChanges();
+    return Results.Ok(new { message = "Torneio alterado com sucesso" });
+}).RequireAuthorization("AdminOnly");
+
+app.MapPost("/reset-torneio", (AppDbContext dbContext, int torneioId) =>
+{
+    var torneio = dbContext.Torneios.FirstOrDefault(t => t.Id == torneioId);
+    if (torneio == null)
+        return Results.NotFound();
+    torneio.Reset();
+    dbContext.SaveChanges();
+    return Results.Ok(new { message = "Torneio resetado com sucesso" });
+}).RequireAuthorization("AdminOnly");
+
+app.MapDelete("/torneio", (AppDbContext dbContext, int torneioId) =>
+{
+    var torneio = dbContext.Torneios.FirstOrDefault(t => t.Id == torneioId);
+    if (torneio == null)
+        return Results.NotFound();
+    dbContext.Torneios.Remove(torneio);
+    dbContext.SaveChanges();
+    return Results.Ok(new { message = "Torneio excluído com sucesso" });
+}).RequireAuthorization("AdminOnly");
+
+/*app.MapGet("/migrar", (AppDbContext db) =>
+{
+    db.Database.Migrate();
+    return Results.Ok("Migrado com sucesso!");
+});*/
 
 app.Urls.Add("http://0.0.0.0:80");
 
