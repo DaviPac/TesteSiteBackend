@@ -8,6 +8,9 @@ using System.Text;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Globalization;
+using System.ComponentModel.DataAnnotations;
+using System.Reflection.Metadata.Ecma335;
+using Microsoft.OpenApi.Any;
 
 var jwtKey = "minha-chave-super-ultra-secreta-mesmo-veridico-2025-123456"; //adicionar como variavel de ambiente depois
 
@@ -216,6 +219,7 @@ app.MapPost("/criar-torneio", (AppDbContext dbContext, TorneioRequest torneioReq
             Nome = torneioRequest.Nome,
             Data = data,
             Type = torneioRequest.Type,
+            Times = []
         };
         dbContext.Torneios.Add(torneio);
         dbContext.SaveChanges();
@@ -233,11 +237,12 @@ app.MapGet("/torneios", (AppDbContext dbContext) =>
 
 app.MapGet("/torneio", (AppDbContext dbContext, int id) =>
 {
-    var torneio = dbContext.Torneios.FirstOrDefault(t => t.Id == id);
+    var torneio = dbContext.Torneios
+    .FirstOrDefault(t => t.Id == id);
     if (torneio == null)
         return Results.NotFound();
     return Results.Ok(torneio);
-}).RequireAuthorization();
+});
 
 app.MapPost("/mudar-torneio", (AppDbContext dbContext, MudarTorneioRequest torneioRequest) =>
 {
@@ -250,7 +255,67 @@ app.MapPost("/mudar-torneio", (AppDbContext dbContext, MudarTorneioRequest torne
     return Results.Ok(new { message = "Torneio alterado com sucesso" });
 }).RequireAuthorization("AdminOnly");
 
-app.MapPost("/reset-torneio", (AppDbContext dbContext, int torneioId) =>
+app.MapPost("/registrar-torneio", (AppDbContext DbContext, RegistrarTorneioRequest request) =>
+{
+    Console.WriteLine(request);
+    var torneio = DbContext.Torneios
+        .Include(t => t.Times)
+        .FirstOrDefault(t => t.Id == request.TorneioId);
+    if (torneio == null)
+        return Results.NotFound();
+    if (torneio.Times.Any(t => t.Nome == request.Nome))
+        return Results.BadRequest(new { message = "Time já registrado" });
+    var idsSolicitados = DbContext.Usuarios
+        .Where(u => request.Usernames.Contains(u.Username))
+        .Select(u => u.Id)
+        .ToHashSet();
+
+    if (torneio.Times.Any(t => t.IdsDeUsuario.Any(i => idsSolicitados.Contains(i))))
+        return Results.BadRequest(new { message = "Usuário já registrado em outro time" });
+    try
+    {
+        var time = new Time
+        {
+            Nome = request.Nome,
+            IdsDeUsuario = request.Usernames.Select(username => DbContext.Usuarios.FirstOrDefault(u => u.Username == username)?.Id ?? throw new Exception("Usuário não encontrado")).ToList()
+        };
+        Console.WriteLine("Time feito");
+        torneio.Times.Add(time);
+        Console.WriteLine("Time Registrado");
+        DbContext.SaveChanges();
+        Console.WriteLine($"Time {request.Nome} registrado com sucesso no torneio {torneio.Nome}");
+        return Results.Ok(new { message = "Time registrado com sucesso" });
+    } catch (Exception e)
+    {
+        Console.WriteLine(e.Message);
+        Console.WriteLine(e.ToString());
+        return Results.BadRequest(new { message = e.Message });
+    }
+}).RequireAuthorization();
+
+app.MapGet("/chaveamento", (AppDbContext dbContext, int torneioId) =>
+{
+    var torneio = dbContext.Torneios
+        .Include(t => t.Times)
+        .FirstOrDefault(t => t.Id == torneioId);
+    if (torneio == null)
+        return Results.NotFound();
+    return Results.Ok(torneio.ExportarParaFront());
+});
+
+app.MapPost("/iniciar-torneio", (AppDbContext dbContext, int torneioId) =>
+{
+    var torneio = dbContext.Torneios
+    .Include(t => t.Times)
+    .FirstOrDefault(t => t.Id == torneioId);
+    if (torneio == null)
+        return Results.NotFound();
+    torneio.Iniciar();
+    dbContext.SaveChanges();
+    return Results.Ok(torneio.ExportarParaFront());
+}).RequireAuthorization("AdminOnly");
+
+/*app.MapPost("/reset-torneio", (AppDbContext dbContext, int torneioId) =>
 {
     var torneio = dbContext.Torneios.FirstOrDefault(t => t.Id == torneioId);
     if (torneio == null)
@@ -258,7 +323,7 @@ app.MapPost("/reset-torneio", (AppDbContext dbContext, int torneioId) =>
     torneio.Reset();
     dbContext.SaveChanges();
     return Results.Ok(new { message = "Torneio resetado com sucesso" });
-}).RequireAuthorization("AdminOnly");
+}).RequireAuthorization("AdminOnly");*/
 
 app.MapDelete("/torneio", (AppDbContext dbContext, int torneioId) =>
 {
@@ -270,11 +335,11 @@ app.MapDelete("/torneio", (AppDbContext dbContext, int torneioId) =>
     return Results.Ok(new { message = "Torneio excluído com sucesso" });
 }).RequireAuthorization("AdminOnly");
 
-/*app.MapGet("/migrar", (AppDbContext db) =>
+app.MapGet("/migrar", (AppDbContext db) =>
 {
     db.Database.Migrate();
     return Results.Ok("Migrado com sucesso!");
-});*/
+});
 
 app.Urls.Add("http://0.0.0.0:80");
 

@@ -1,275 +1,152 @@
 ﻿using System.ComponentModel.DataAnnotations;
-using Microsoft.EntityFrameworkCore.Storage.ValueConversion.Internal;
-using System.ComponentModel.DataAnnotations.Schema;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace backend.Models
 {
     public class Time
     {
         public int Id { get; set; }
+        public required List<int> IdsDeUsuario { get; set; }
         public required string Nome { get; set; }
-        public required List<Usuario> Jogadores { get; set; }
-    }
-    public class Partida
-    {
-        public int Id { get; set; }
-        public required Time? TimeA { get; set; }
-        public required Time? TimeB { get; set; }
-        public Time? Vencedor { get; set; } = null;
-        public Time? Perdedor { get; set; } = null;
-    }
-    public class Rodada
-    {
-        public required List<Partida> Partidas { get; set; }
+
+        public int OrdemNoTorneio { get; set; }
+
+        public int TorneioId { get; set; }
+        [JsonIgnore]
+        public Torneio Torneio { get; set; } = null!;
     }
 
+    public class Jogo
+    {
+        public string Id { get; set; } = null!;
+        public int? Vencedor { get; set; }
+
+        public Time? Time1 { get; set; }
+        public Time? Time2 { get; set; }
+    }
     public class Torneio
     {
-        private class Chaveamento
-        {
-            public int Rodada { get; set; } = 0;
-            int NumRodadas { get; set; }
-            public List<Rodada> Rodadas { get; set; } = [];
-            public static void FimPartida(Partida partida, Time vencedor)
-            {
-                partida.Vencedor = vencedor;
-                partida.Perdedor = vencedor == partida.TimeA ? partida.TimeB : partida.TimeA;
-            }
-            public void Update()
-            {
-                // Atualiza as rodadas
-                for (int i = 0; i < Rodadas.Count; i++)
-                {
-                    // Atualiza as partidas
-                    for (int j = 0; j < Rodadas[i].Partidas.Count; j++)
-                    {
-                        // Verifica se a partida ja foi finalizada
-                        if (Rodadas[i].Partidas[j].Vencedor != null)
-                        {
-                            if (j % 2 != 0 ) Rodadas[i + 1].Partidas[j / 2].TimeA = Rodadas[i].Partidas[j].Vencedor;
-                            else Rodadas[i + 1].Partidas[j / 2].TimeB = Rodadas[i].Partidas[j].Vencedor;
-                        }
-                        var partida = Rodadas[i].Partidas[j];
-                        string nomePerdedor = $"Perdedor {partida.TimeA?.Nome} x {partida.TimeB?.Nome}";
-                        // Procurar partida com esse nome
-                        foreach (var rodada in Rodadas)
-                        {
-                            foreach (var perdedorPartida in rodada.Partidas)
-                            {
-                                if (perdedorPartida.TimeA?.Nome == nomePerdedor)
-                                {
-                                    perdedorPartida.TimeA = partida.Perdedor;
-                                }
-                                else if (perdedorPartida.TimeB?.Nome == nomePerdedor)
-                                {
-                                    perdedorPartida.TimeB = partida.Perdedor;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            public Chaveamento(List<Time> times)
-            {
-                // Embaralhar times
-                Random random = new();
-                var timesEmbaralhados = times.OrderBy(t => random.Next()).ToList();
-                // Calcula numero de "times" vazios para que tenha o numero de times necessario
-                NumRodadas = 1;
-                while (NumRodadas < times.Count)
-                    NumRodadas *= 2;
-                int nulos = NumRodadas - times.Count;
-                for (int i = 0; i < nulos; i++)
-                {
-                    timesEmbaralhados.Add(new Time()
-                    {
-                        Nome = $"Perdedor {timesEmbaralhados[i * 2].Nome} x {timesEmbaralhados[(i * 2) + 1].Nome}",
-                        Jogadores = []
-                    });
-                }
-                Rodada PrimeiraRodada = new()
-                {
-                    Partidas = []
-                };
-                for (int i = 0; i < timesEmbaralhados.Count; i++)
-                {
-                    Partida partida = new()
-                    {
-                        TimeA = timesEmbaralhados[i],
-                        TimeB = timesEmbaralhados[i + 1]
-                    };
-                    PrimeiraRodada.Partidas.Add(partida);
-                }
-                Rodadas.Add(PrimeiraRodada);
-                int numTimes = PrimeiraRodada.Partidas.Count * 2;
-                while (numTimes > 1)
-                {
-                    Rodada rodada = new()
-                    {
-                        Partidas = []
-                    };
-                    for (int i = 0; i < numTimes; i += 2)
-                    {
-                        rodada.Partidas.Add(new()
-                        {
-                            TimeA = Rodadas[^1].Partidas[i].Vencedor,
-                            TimeB = Rodadas[^1].Partidas[i + 1].Vencedor
-                        });
-                    }
-                    Rodadas.Add(rodada);
-                    numTimes /= 2;
-                }
-            }
-        }
         public int Id { get; set; }
-        public string Type { get; set; } = "single";
         public required string Nome { get; set; }
+        public required List<Time> Times { get; set; }
         public required DateTime Data { get; set; }
-        public List<Time> Times { get; set; } = [];
 
-        [NotMapped]
-        private Chaveamento? Chave { get; set; } = null;
-        public bool HasStarted { get; set; } = false;
-        public void SoftReset()
+        public required string Type { get; set; }
+
+        public string? ChaveamentoJson { get; set; } // Armazena resultados como JSON
+        public DateTime CriadoEm { get; set; } = DateTime.Now;
+
+        public void Iniciar()
         {
-            Rodada primeiraRodada = GetRodadas()[0];
-            GerarChaveamento();
-            if (Chave != null)
+            var random = new Random();
+            Times = Times.OrderBy(x => random.Next()).ToList();
+            for (int i = 0; i < Times.Count; i++)
             {
-                Chave.Rodadas[0] = primeiraRodada;
-                foreach (Partida partida in Chave.Rodadas[0].Partidas)
+                Times[i].OrdemNoTorneio = i;
+            }
+
+            var rodadas = CriarChaveamentoInicial();
+            ChaveamentoJson = JsonSerializer.Serialize(rodadas);
+        }
+
+        public List<List<Jogo>> CriarChaveamentoInicial()
+        {
+            // Suporte apenas para potências de 2
+            int n = Times.Count;
+            if ((n & (n - 1)) != 0)
+                throw new InvalidOperationException("O número de times deve ser potência de 2");
+
+            var rodada0 = new List<Jogo>();
+            for (int i = 0; i < n; i += 2)
+            {
+                rodada0.Add(new Jogo
                 {
-                    partida.Vencedor = null;
-                    partida.Perdedor = null;
-                }
-                UpdateChaveamento();
-            }
-        }
-        public void Reset()
-        {
-            HasStarted = false;
-            Chave = null;
-        }
-        public void FullReset()
-        {
-            Times.Clear();
-            HasStarted = false;
-            Chave = null;
-        }
-        public bool IsRegistered(Usuario user)
-        {
-            return Times.Any(t => t.Jogadores.Any(j => j == user));
-        }
-        public int RegistrarTime(string nome, List<Usuario> jogadores)
-        {
-            if (HasStarted)
-                return -1;
-            if (Times.Any(t => t.Nome == nome))
-                return -2;
-            if (Times.Any(t => t.Jogadores.Any(j => jogadores.Contains(j))))
-                return -3;
-            Times.Add(new()
-            {
-                Nome = nome,
-                Jogadores = jogadores
-            });
-            return 0;
-        }
-        public void FimPartida(Partida partida, Time time)
-        {
-            Chaveamento.FimPartida(partida, time);
-            UpdateChaveamento();
-        }
-        public List<Rodada> GetRodadas()
-        {
-            return Chave?.Rodadas ?? [];
-        }
-        public List<Partida> GetPartidas()
-        {
-            List<Partida> partidas = [];
-            foreach (Rodada rodada in GetRodadas())
-            {
-                partidas.AddRange(rodada.Partidas);
-            }
-            return partidas;
-        }
-        public List<Partida> GetPendingPartidas()
-        {
-            List<Partida> pendingPartidas = [];
-            foreach (Partida partida in GetPartidas())
-            {
-                if (partida.Vencedor == null && partida.TimeA != null && partida.TimeB != null && partida.TimeA.Jogadores.Count > 0 && partida.TimeB.Jogadores.Count > 0)
-                {
-                    pendingPartidas.Add(partida);
-                }
-            }
-            return pendingPartidas;
-        }
-
-
-        public void UpdateChaveamento()
-        {
-            if (Chave == null)
-            {
-                Chave = new Chaveamento(Times);
-                HasStarted = true;;
-            }
-            else
-            {
-                Chave.Update();
-            }
-        }
-        public void GerarChaveamento()
-        {
-            Chave = new Chaveamento(Times);
-            HasStarted = true;
-        }
-        public object ToJqueryBracketFormat()
-        {
-            if (Chave == null || Chave.Rodadas.Count == 0)
-                return new { teams = new List<List<string>>(), results = new List<List<List<int?>>>() };
-
-            var teams = new List<List<string>>();
-            var results = new List<List<List<int?>>>();
-
-            // Primeira rodada - monta os times
-            var primeiraRodada = Chave.Rodadas[0];
-            foreach (var partida in primeiraRodada.Partidas)
-            {
-                teams.Add(new List<string> {
-                    partida.TimeA?.Nome ?? "???",
-                    partida.TimeB?.Nome ?? "???"
+                    Id = Guid.NewGuid().ToString(),
+                    Time1 = Times[i],
+                    Time2 = Times[i + 1],
+                    Vencedor = null
                 });
             }
 
-            // Para cada rodada monta os resultados
-            foreach (var rodada in Chave.Rodadas)
-            {
-                var resultadoRodada = new List<List<int?>>();
+            return new List<List<Jogo>> { rodada0 }; // Primeira rodada
+        }
 
-                foreach (var partida in rodada.Partidas)
+        public void SetVencedor(string jogoId, int timeVencedorId)
+        {
+            if (string.IsNullOrWhiteSpace(ChaveamentoJson)) return;
+
+            var rodadas = JsonSerializer.Deserialize<List<List<Jogo>>>(ChaveamentoJson!)!;
+            foreach (var rodada in rodadas)
+            {
+                foreach (var jogo in rodada)
                 {
-                    if (partida.Vencedor != null && partida.TimeA != null && partida.TimeB != null)
+                    if (jogo.Id == jogoId)
                     {
-                        // 1 para vencedor, 0 para perdedor na ordem TimeA, TimeB
-                        int a = partida.Vencedor.Nome == partida.TimeA.Nome ? 1 : 0;
-                        int b = 1 - a;
-                        resultadoRodada.Add(new List<int?> { a, b });
-                    }
-                    else
-                    {
-                        resultadoRodada.Add(new List<int?> { null, null });
+                        jogo.Vencedor = timeVencedorId;
+                        AtualizarProximaRodada(rodadas, jogo);
+                        ChaveamentoJson = JsonSerializer.Serialize(rodadas);
+                        return;
                     }
                 }
+            }
+        }
 
-                results.Add(resultadoRodada);
+        private void AtualizarProximaRodada(List<List<Jogo>> rodadas, Jogo jogoAtual)
+        {
+            int rodadaIndex = rodadas.FindIndex(r => r.Contains(jogoAtual));
+            int posicao = rodadas[rodadaIndex].IndexOf(jogoAtual);
+
+            // Criar próxima rodada se ainda não existe
+            if (rodadas.Count == rodadaIndex + 1)
+            {
+                int jogosNaProximaRodada = rodadas[rodadaIndex].Count / 2;
+                var novaRodada = new List<Jogo>();
+                for (int i = 0; i < jogosNaProximaRodada; i++)
+                {
+                    novaRodada.Add(new Jogo
+                    {
+                        Id = Guid.NewGuid().ToString()
+                    });
+                }
+                rodadas.Add(novaRodada);
             }
 
-            return new
+            var proximoJogo = rodadas[rodadaIndex + 1][posicao / 2];
+            if (posicao % 2 == 0)
+                proximoJogo.Time1 = GetTimeById(jogoAtual.Vencedor!.Value);
+            else
+                proximoJogo.Time2 = GetTimeById(jogoAtual.Vencedor!.Value);
+        }
+
+        private Time GetTimeById(int id)
+        {
+            return Times.First(t => t.Id == id);
+        }
+
+        public object ExportarParaFront()
+        {
+            if (string.IsNullOrWhiteSpace(ChaveamentoJson))
+                return new { teams = new string[][] { }, results = new object[] { } };
+
+            var rodadas = JsonSerializer.Deserialize<List<List<Jogo>>>(ChaveamentoJson!)!;
+
+            var orderedTimes = Times
+                .OrderBy(t => t.OrdemNoTorneio)
+                .ToList();
+            var teams = new List<List<string>>();
+            for (int i = 0; i < orderedTimes.Count; i += 2)
             {
-                teams,
-                results
-            };
+                teams.Add(new List<string> { orderedTimes[i].Nome, orderedTimes[i + 1].Nome });
+            }
+
+            var results = rodadas
+                .Select(r => r.Select(j => new List<int?> {
+                    j.Vencedor == j.Time1?.Id ? 1 : j.Vencedor == j.Time2?.Id ? 0 : null,
+                    j.Vencedor == j.Time2?.Id ? 1 : j.Vencedor == j.Time1?.Id ? 0 : null
+                }).ToArray()).ToArray();
+
+            return new { teams, results };
         }
     }
 }
